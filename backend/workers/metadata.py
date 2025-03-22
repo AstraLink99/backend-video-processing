@@ -52,7 +52,7 @@ def callback(ch, method, properties, body):
     """Processes metadata extraction tasks"""
     task = json.loads(body)
     filename = task.get("filename")
-    client_id = task.get("client_id", "unknown")  # ✅ Ensure client_id is handled
+    client_id = task.get("client_id", "unknown")  #  Ensure client_id is handled
 
     print(f"📊 Extracting metadata for: {filename}")
 
@@ -63,7 +63,7 @@ def callback(ch, method, properties, body):
             response = requests.post(FASTAPI_URL, json=metadata)
             print(f"✅ Metadata sent to FastAPI: {response.status_code}")
 
-            # ✅ Send WebSocket update to notify client
+            #  Send WebSocket update to notify client
             asyncio.run(send_update(client_id, {
                 "status": "metadata_done",
                 "filename": filename,

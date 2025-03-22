@@ -27,7 +27,7 @@ async def send_update(client_id, message):
 def enhance_video(filename):
     """Applies simple enhancements (FPS and brightness adjustments)"""
     input_path = os.path.join(UPLOAD_DIR, filename)
-    output_path = os.path.join(PROCESSED_DIR, f"enhanced_{filename}")  # ✅ Save with the correct filename
+    output_path = os.path.join(PROCESSED_DIR, f"enhanced_{filename}")  # Save with the correct filename
 
     try:
         # Load video
@@ -35,7 +35,7 @@ def enhance_video(filename):
         new_clip = clip.fx(lambda c: c.fl_image(lambda img: cv2.convertScaleAbs(img, alpha=1.2, beta=20)))  # Brightness
         new_clip = new_clip.set_fps(30)  # Adjust FPS
 
-        # Save processed video ✅ Auto-detect format from filename
+        # Save processed video  Auto-detect format from filename
         if filename.endswith(".webm"):
             new_clip.write_videofile(output_path, codec="libvpx", audio_codec="libvorbis")
         else:
@@ -58,7 +58,7 @@ def callback(ch, method, properties, body):
     if enhanced_path:
         print(f"✅ Enhanced video saved: {enhanced_path}")
 
-        # ✅ Send WebSocket update to FastAPI
+        # Send WebSocket update to FastAPI
         asyncio.run(send_update(client_id, {
             "status": "enhancement_done",
             "filename": filename,
