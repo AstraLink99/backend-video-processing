@@ -103,4 +103,4 @@ npm run dev
 
 ###  Metadata & Enhancement Info Not Displayed on Frontend
 - Currently, the **metadata and enhanced video information** are **only visible in the terminal logs** of the respective worker processes.
-- The **Frontend does not display** metadata via WebSockets, even though it should.
+- The **Frontend does not display** metadata via WebSockets.
