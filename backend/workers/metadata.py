@@ -6,7 +6,6 @@ import requests
 import websockets
 import asyncio
 
-# RabbitMQ & FastAPI Config
 RABBITMQ_HOST = "localhost"
 QUEUE_NAME = "video_tasks"
 UPLOAD_DIR = "storage"
@@ -18,27 +17,26 @@ async def send_update(client_id, message):
     try:
         async with websockets.connect(WEBSOCKET_URL + client_id) as websocket:
             await websocket.send(json.dumps(message))
+            print(f"✅ WebSocket update sent: {message}")
     except Exception as e:
         print(f"❌ Error sending WebSocket update: {e}")
 
 def process_metadata(filename):
-    """Extract metadata from a video file using ffmpeg"""
     input_path = os.path.join(UPLOAD_DIR, filename)
-
     try:
-        # Run ffprobe to get metadata
         probe = ffmpeg.probe(input_path)
         video_streams = [s for s in probe['streams'] if s['codec_type'] == 'video']
 
         if not video_streams:
             raise Exception("No video stream found")
 
-        video_info = video_streams[0]  # First video stream
+        video_info = video_streams[0]
         metadata = {
             "filename": filename,
             "duration": float(probe["format"]["duration"]),
             "resolution": f"{video_info['width']}x{video_info['height']}",
-            "codec": video_info["codec_name"]
+            "codec": video_info["codec_name"],
+            "processed_video": f"/storage/processed/enhanced_{filename}"
         }
 
         print(f"✅ Metadata extracted: {metadata}")
@@ -49,32 +47,30 @@ def process_metadata(filename):
         return None
 
 def callback(ch, method, properties, body):
-    """Processes metadata extraction tasks"""
     task = json.loads(body)
     filename = task.get("filename")
-    client_id = task.get("client_id", "unknown")  #  Ensure client_id is handled
+    client_id = task.get("client_id", "unknown")
 
     print(f"📊 Extracting metadata for: {filename}")
 
     metadata = process_metadata(filename)
     if metadata:
-        # Send metadata to FastAPI
         try:
             response = requests.post(FASTAPI_URL, json=metadata)
             print(f"✅ Metadata sent to FastAPI: {response.status_code}")
 
-            #  Send WebSocket update to notify client
+            # Send WebSocket update with retry logic
             asyncio.run(send_update(client_id, {
                 "status": "metadata_done",
                 "filename": filename,
                 "metadata": metadata
             }))
         except Exception as e:
-            print(f"❌ Error sending metadata: {e}")
+            print(f"❌ Error sending metadata update: {e}")
 
     ch.basic_ack(delivery_tag=method.delivery_tag)
 
-# Connect to RabbitMQ and Start Listening
+# Connect to RabbitMQ
 connection = pika.BlockingConnection(pika.ConnectionParameters(RABBITMQ_HOST))
 channel = connection.channel()
 channel.queue_declare(queue=QUEUE_NAME)

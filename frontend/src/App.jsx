@@ -8,13 +8,12 @@ function App() {
   const [file, setFile] = useState(null);
   const [status, setStatus] = useState("Waiting...");
   const [metadata, setMetadata] = useState(null);
+  const [processedVideo, setProcessedVideo] = useState(null);
 
-  // Handle file selection
   const handleFileChange = (event) => {
     setFile(event.target.files[0]);
   };
 
-  // Upload file to FastAPI
   const handleUpload = async () => {
     if (!file) {
       alert("Please select a file first!");
@@ -36,38 +35,40 @@ function App() {
     }
   };
 
-  // WebSocket Connection
   useEffect(() => {
-    const ws = new WebSocket(WS_URL);
+    const connectWebSocket = () => {
+      const ws = new WebSocket(WS_URL);
 
-    ws.onopen = () => {
-      console.log("Connected to WebSocket!");
-      setStatus("Connected! Waiting for updates...");
+      ws.onopen = () => {
+        console.log("Connected to WebSocket!");
+        setStatus("Connected! Waiting for updates...");
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        console.log("Received from WebSocket:", data);
+
+        if (data.status === "enhancement_done") {
+          setStatus(`✅ Video Enhanced: ${data.filename}`);
+          setProcessedVideo(`${API_BASE_URL}/storage/processed/enhanced_${data.filename}`);
+        } else if (data.status === "metadata_done") {
+          console.log("✅ Metadata received:", data.metadata);
+          setMetadata(data.metadata);
+          setStatus(`📊 Metadata Extracted for ${data.filename}`);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error("WebSocket Error:", error);
+      };
+
+      ws.onclose = () => {
+        console.log("WebSocket disconnected. Reconnecting...");
+        setTimeout(connectWebSocket, 3000); // Auto-reconnect after 3 seconds
+      };
     };
 
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      console.log("Received from WebSocket:", data);
-
-      if (data.status === "enhancement_done") {
-        setStatus(`✅ Video Enhanced: ${data.filename}`);
-      } else if (data.status === "metadata_done") {
-        console.log("✅ Metadata received:", data.metadata);
-        setMetadata(data.metadata);
-        setStatus(`📊 Metadata Extracted for ${data.filename}`);
-      }
-    };
-
-    ws.onerror = (error) => {
-      console.error("WebSocket Error:", error);
-    };
-
-    ws.onclose = () => {
-      console.log("WebSocket disconnected.");
-      setStatus("Disconnected.");
-    };
-
-    return () => ws.close();
+    connectWebSocket();
   }, []);
 
   return (
@@ -104,6 +105,16 @@ function App() {
           <p><strong>Duration:</strong> {metadata.duration} sec</p>
           <p><strong>Resolution:</strong> {metadata.resolution}</p>
           <p><strong>Codec:</strong> {metadata.codec}</p>
+        </div>
+      )}
+
+      {processedVideo && (
+        <div className="mt-6">
+          <h4 className="text-lg font-semibold">🎥 Processed Video:</h4>
+          <video controls className="mt-2 w-96">
+            <source src={processedVideo} type="video/mp4" />
+            Your browser does not support the video tag.
+          </video>
         </div>
       )}
     </div>

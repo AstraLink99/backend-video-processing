@@ -5,12 +5,14 @@ import aiofiles
 import pika
 import json
 import os
-from fastapi import BackgroundTasks
+from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
 
-#fixing cors error
+# Mount storage to serve processed videos
+app.mount("/storage", StaticFiles(directory="storage"), name="storage")
 
+# Fixing CORS errors
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  
@@ -25,22 +27,18 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 metadata_store = {}  # Stores extracted metadata for each video
 processing_status = {}
 
+# Store active WebSocket connections
 active_connections = {}
 
 # RabbitMQ Config
 RABBITMQ_HOST = "localhost"
 QUEUE_NAME = "video_tasks"
 
-# Storage Directory
-UPLOAD_DIR = "storage"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-# Initialize RabbitMQ connection
+# Setup RabbitMQ
 def setup_rabbitmq():
-    """Initialize RabbitMQ Connection & Queue"""
     connection = pika.BlockingConnection(pika.ConnectionParameters(RABBITMQ_HOST))
     channel = connection.channel()
-    channel.queue_declare(queue=QUEUE_NAME)  # Declare the queue
+    channel.queue_declare(queue=QUEUE_NAME)  
     connection.close()
 
 setup_rabbitmq()  
@@ -55,41 +53,36 @@ def send_to_queue(task):
 
 @app.post("/upload")
 async def upload_video(file: UploadFile = File(...)):
-    client_id = "test_client"  # Pass client ID dynamically in a real app
+    client_id = "test_client"  
     file_path = os.path.join(UPLOAD_DIR, file.filename)
 
     async with aiofiles.open(file_path, 'wb') as out_file:
         while content := await file.read(1024):
             await out_file.write(content)
 
-    # Send task to RabbitMQ
     task = {"filename": file.filename, "client_id": client_id}  
     send_to_queue(task)
 
     return {"message": "Video uploaded successfully!", "filename": file.filename}
 
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    await websocket.send_text("WebSocket connected!")
-    await websocket.close()
-
 @app.post("/internal/metadata-extraction-status")
-async def receive_metadata(metadata: dict, background_tasks: BackgroundTasks):
+async def receive_metadata(metadata: dict):
     """Receives metadata from the worker and stores it"""
     filename = metadata.get("filename")
     if filename:
         metadata_store[filename] = metadata
         print(f"Stored metadata for {filename}")
-    return {"message": "Metadata received successfully"}
+
+        # Send update to WebSocket
+        client_id = "test_client"
+        await send_update(client_id, {"status": "metadata_done", "metadata": metadata})
+
+    return {"message": "Metadata received successfully", "data": metadata_store}
 
 @app.get("/metadata/{filename}")
 async def get_metadata(filename: str):
     """Retrieve stored metadata for a video"""
-    metadata = metadata_store.get(filename)
-    if metadata:
-        return metadata
-    return {"error": "Metadata not found"}
+    return metadata_store.get(filename, {"error": "Metadata not found"})
 
 @app.websocket("/ws/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str):
@@ -100,13 +93,12 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
 
     try:
         while True:
-            await asyncio.sleep(10)  # Keep the connection alive
+            await asyncio.sleep(10)  
     except Exception as e:
         print(f"🔴 Client {client_id} disconnected: {e}")
     finally:
         del active_connections[client_id]
 
-# Function to send updates
 async def send_update(client_id: str, message: dict):
     """Sends a WebSocket update if client is connected"""
     if client_id in active_connections:
